@@ -25,15 +25,31 @@ export async function transcribeWithSarvam(audioBlob, apiKey, options = {}) {
     // Build multipart form data
     const formData = new FormData();
 
-    // Determine file extension from blob type
-    const ext = audioBlob.type.includes('webm') ? 'webm' :
-        audioBlob.type.includes('wav') ? 'wav' :
-            audioBlob.type.includes('mp3') ? 'mp3' : 'webm';
+    // Determine clean MIME type and extension (strip codec params like ";codecs=opus")
+    let cleanMime = 'audio/webm';
+    let ext = 'webm';
+    if (audioBlob.type.includes('wav')) { cleanMime = 'audio/wav'; ext = 'wav'; }
+    else if (audioBlob.type.includes('mp3') || audioBlob.type.includes('mpeg')) { cleanMime = 'audio/mpeg'; ext = 'mp3'; }
+    else if (audioBlob.type.includes('webm')) { cleanMime = 'audio/webm'; ext = 'webm'; }
 
-    formData.append('file', audioBlob, `recording.${ext}`);
+    // Re-wrap blob with clean MIME type (Sarvam rejects "audio/webm;codecs=opus")
+    const cleanBlob = new Blob([audioBlob], { type: cleanMime });
+
+    formData.append('file', cleanBlob, `recording.${ext}`);
     formData.append('model', 'saaras:v3');
-    formData.append('language_code', languageCode);
+    // Only send language_code if a specific language is selected (not 'unknown')
+    if (languageCode && languageCode !== 'unknown') {
+        formData.append('language_code', languageCode);
+    }
     formData.append('mode', mode);
+
+    console.log('[STT Debug] Sending to Sarvam:', {
+        fileSize: cleanBlob.size,
+        fileType: cleanBlob.type,
+        ext,
+        languageCode,
+        mode,
+    });
 
     try {
         const response = await fetch(SARVAM_API_URL, {
@@ -45,9 +61,17 @@ export async function transcribeWithSarvam(audioBlob, apiKey, options = {}) {
         });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
+            const errorText = await response.text();
+            console.error('[STT Debug] Sarvam API error response:', response.status, errorText);
+            let errorMessage;
+            try {
+                const errorData = JSON.parse(errorText);
+                errorMessage = errorData.error?.message || errorData.message || errorData.detail || JSON.stringify(errorData);
+            } catch {
+                errorMessage = errorText;
+            }
             throw new Error(
-                errorData.message || `Sarvam AI API error: ${response.status} ${response.statusText}`
+                `Sarvam AI API error: ${response.status} — ${errorMessage}`
             );
         }
 

@@ -103,10 +103,7 @@ export default function App() {
       {/* Header */}
       <header className="app-header">
         <div className="app-logo" onClick={() => setView('home')} style={{ cursor: 'pointer' }}>
-          <div>
-            <div className="app-logo-text">बोलो</div>
-            <div className="app-logo-tagline">Voice → Developer Prompts</div>
-          </div>
+          <img src="/Bolo-logo.png" alt="Bolo" className="app-logo-img" />
         </div>
 
         <nav className="header-nav">
@@ -185,6 +182,11 @@ export default function App() {
                   />
                 </div>
               </div>
+            )}
+
+            {/* Danda Divider — Devanagari-inspired */}
+            {(latestPrompt || prompts.length > 0) && (
+              <div className="danda-divider" aria-hidden="true">॥</div>
             )}
 
             {/* Recent History (compact) */}

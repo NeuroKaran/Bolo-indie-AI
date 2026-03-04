@@ -1,16 +1,196 @@
-# React + Vite
+<p align="center">
+  <img src="./Bolo-logo.png" alt="Bolo Logo" width="280" />
+</p>
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+<h1 align="center">Bolo — बोलो</h1>
 
-Currently, two official plugins are available:
+<p align="center">
+  <strong>Dictate in Hinglish. Get developer-grade prompts instantly.</strong><br/>
+  <em>Voice-native agentic bridge for Indian developers.</em>
+</p>
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+<p align="center">
+  <img src="https://img.shields.io/badge/Made_in-India_%F0%9F%87%AE%F0%9F%87%B3-FF9933?style=for-the-badge" alt="Made in India" />
+  <img src="https://img.shields.io/badge/Vite-React-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite + React" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" />
+</p>
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🎯 What is Bolo?
 
-## Expanding the ESLint configuration
+**Bolo** (Hindi for *"speak"*) removes the translation tax for Indian developers. Instead of struggling to type prompts in English, just speak your ideas in **Hinglish, Hindi, Tamil, Bengali, Telugu** — or any Indian language — and Bolo transforms your voice into structured, agent-ready prompts that paste directly into AI coding assistants.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+<p align="center">
+  <img src="./Bolo-logo.png" alt="Bolo Hero Section" width="600" />
+</p>
+
+### ✨ Key Features
+
+| Feature | Description |
+|---------|-------------|
+| 🎙️ **Voice Recording** | One-click or `Ctrl + Space` hotkey to start dictating |
+| 🗣️ **Indic STT** | Powered by Sarvam AI — supports Hinglish and 10+ Indian languages |
+| 🧠 **AI Prompt Structuring** | Gemini 2.5 Flash transforms transcripts into structured prompts |
+| 📋 **Auto-Copy** | Prompts automatically copied to clipboard, ready to paste |
+| 📜 **Prompt History** | Last 50 prompts stored locally with search & favorites |
+| ⚙️ **Settings** | Configure STT provider, language, API keys, and preferences |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** 18+
+- **Sarvam AI API Key** — for Indian language speech-to-text
+- **Google Gemini API Key** — for prompt structuring
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/NeuroKaran/Bolo-indie-AI.git
+cd Bolo-indie-AI
+
+# Install dependencies
+npm install
+
+# Create environment file
+cp .env.example .env
+# Add your API keys to .env
+```
+
+### Running Locally
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### Building for Production
+
+```bash
+npm run build
+npm run preview
+```
+
+---
+
+## 🏗️ Architecture
+
+```
+Bolo/
+├── public/
+│   ├── Bolo-logo.png          # Brand logo
+│   └── favicon.png            # Favicon
+├── src/
+│   ├── components/
+│   │   ├── FloatingBar.jsx    # Recording overlay with waveform
+│   │   ├── HistoryPanel.jsx   # Prompt history with search
+│   │   ├── PromptCard.jsx     # Structured prompt display
+│   │   ├── SettingsPanel.jsx  # Configuration UI
+│   │   ├── Toast.jsx          # Notification system
+│   │   └── Waveform.jsx       # Audio visualization
+│   ├── services/
+│   │   ├── sttService.js      # Sarvam AI STT integration
+│   │   ├── promptService.js   # Gemini prompt structuring
+│   │   ├── clipboardService.js # Clipboard operations
+│   │   └── storageService.js  # LocalStorage persistence
+│   ├── App.jsx                # Main application
+│   ├── main.jsx               # Entry point
+│   └── index.css              # Design system
+├── index.html
+└── package.json
+```
+
+### Data Flow
+
+```
+🎙️ Voice Input
+    ↓
+🔊 Audio Capture (Web Audio API)
+    ↓
+🗣️ Sarvam AI STT (Indic-aware transcription)
+    ↓
+🧠 Gemini 2.5 Flash (Prompt structuring)
+    ↓
+📋 Structured Prompt → Clipboard
+```
+
+---
+
+## 🎨 Design
+
+Bolo follows an **Indian-first aesthetic** with a design system rooted in Indian heritage:
+
+- **Color Palette** — Saffron (`#FF9933`) & warm whites, inspired by the Indian flag
+- **Typography** — [Yatra One](https://fonts.google.com/specimen/Yatra+One) (Mumbai railway signage), [Rozha One](https://fonts.google.com/specimen/Rozha+One) (Indian newspaper mastheads), [Hind](https://fonts.google.com/specimen/Hind) (Devanagari-first UI font)
+- **Cultural Elements** — Devanagari `॥` danda dividers, ornamental shimmer animations
+- **Texture** — Subtle paper-like background gradients
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React 19, Vite 7 |
+| **Styling** | Vanilla CSS (custom design system) |
+| **Icons** | Lucide React |
+| **STT** | Sarvam AI |
+| **LLM** | Google Gemini 2.5 Flash |
+| **Storage** | Browser LocalStorage |
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl + Space` | Open recording bar |
+| `Escape` | Close recording bar |
+
+---
+
+## 🗺️ Roadmap
+
+- [x] Voice capture & recording
+- [x] Sarvam AI STT integration
+- [x] Gemini prompt structuring
+- [x] Clipboard auto-copy
+- [x] Prompt history & favorites
+- [x] Indian heritage typography
+- [ ] VSCode / Cursor extension
+- [ ] Mobile companion app
+- [ ] Custom vocabulary dictionary
+- [ ] Multi-provider STT switching
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Feel free to open issues and pull requests.
+
+```bash
+# Run the linter
+npm run lint
+
+# Build the project
+npm run build
+```
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+---
+
+<p align="center">
+  <img src="./Bolo-logo.png" alt="Bolo" width="80" /><br/>
+  <strong>Built with ❤️ in India</strong><br/>
+  <em>बोलो, और code करो!</em>
+</p>
