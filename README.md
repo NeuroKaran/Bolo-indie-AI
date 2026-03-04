@@ -22,7 +22,7 @@
 **Bolo** (Hindi for *"speak"*) removes the translation tax for Indian developers. Instead of struggling to type prompts in English, just speak your ideas in **Hinglish, Hindi, Tamil, Bengali, Telugu** — or any Indian language — and Bolo transforms your voice into structured, agent-ready prompts that paste directly into AI coding assistants.
 
 <p align="center">
-  <img src="./Bolo-logo.png" alt="Bolo Hero Section" width="600" />
+  <img src="./bolo-screenshot.png" alt="Bolo — App Screenshot" width="700" />
 </p>
 
 ### ✨ Key Features
