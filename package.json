@@ -1,15 +1,21 @@
 {
-  "name": "bolo-temp",
+  "name": "bolo",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Voice-native agentic bridge for Indian developers — dictate in Hinglish, get developer-grade prompts instantly",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "desktop": "tauri dev",
+    "build:desktop": "tauri build"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-global-shortcut": "^2.3.1",
     "lucide-react": "^0.576.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -18,6 +24,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@tauri-apps/cli": "^2.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",

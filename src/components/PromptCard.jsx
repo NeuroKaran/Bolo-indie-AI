@@ -1,16 +1,19 @@
 import { useState } from 'react';
-import { Copy, Star, Trash2, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { Copy, Star, Trash2, ChevronDown, ChevronUp, Check, Pencil, X, Save } from 'lucide-react';
 import { copyPromptToClipboard } from '../services/clipboardService';
 
 /**
- * Displays a structured prompt result.
+ * Displays a structured prompt result with inline editing support.
  */
-export default function PromptCard({ prompt, onCopy, onFavorite, onDelete, isFavorite }) {
+export default function PromptCard({ prompt, onCopy, onFavorite, onDelete, onUpdate, isFavorite }) {
     const [showTranscript, setShowTranscript] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editData, setEditData] = useState(null);
 
     const handleCopy = async () => {
-        const success = await copyPromptToClipboard(prompt);
+        const target = isEditing ? { ...prompt, ...editData } : prompt;
+        const success = await copyPromptToClipboard(target);
         if (success) {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
@@ -18,14 +21,82 @@ export default function PromptCard({ prompt, onCopy, onFavorite, onDelete, isFav
         }
     };
 
+    const startEditing = () => {
+        setEditData({
+            title: prompt.title,
+            summary: prompt.summary,
+            requirements: [...(prompt.requirements || [])],
+            acceptance_criteria: [...(prompt.acceptance_criteria || [])],
+            constraints: [...(prompt.constraints || [])],
+        });
+        setIsEditing(true);
+    };
+
+    const cancelEditing = () => {
+        setEditData(null);
+        setIsEditing(false);
+    };
+
+    const saveEditing = () => {
+        if (editData) {
+            onUpdate?.(prompt.promptId, editData);
+        }
+        setIsEditing(false);
+        setEditData(null);
+    };
+
+    const updateEditField = (field, value) => {
+        setEditData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const updateEditListItem = (field, index, value) => {
+        setEditData(prev => {
+            const list = [...prev[field]];
+            list[index] = value;
+            return { ...prev, [field]: list };
+        });
+    };
+
+    const removeEditListItem = (field, index) => {
+        setEditData(prev => {
+            const list = [...prev[field]];
+            list.splice(index, 1);
+            return { ...prev, [field]: list };
+        });
+    };
+
+    const addEditListItem = (field) => {
+        setEditData(prev => ({
+            ...prev,
+            [field]: [...prev[field], ''],
+        }));
+    };
+
     const timeAgo = formatTimeAgo(prompt.createdAt);
+    const showLowConfidence = (prompt.confidence || 0) < 0.7 && !isEditing;
 
     return (
-        <div className="prompt-card">
+        <div className={`prompt-card ${isEditing ? 'editing' : ''}`}>
+            {/* Low confidence banner */}
+            {showLowConfidence && (
+                <div className="prompt-low-confidence-banner" onClick={startEditing}>
+                    ⚠️ Low confidence — Click to edit before copying
+                </div>
+            )}
+
             {/* Header */}
             <div className="prompt-card-header">
-                <div>
-                    <h3 className="prompt-card-title">{prompt.title}</h3>
+                <div style={{ flex: 1 }}>
+                    {isEditing ? (
+                        <input
+                            className="prompt-edit-title"
+                            value={editData.title}
+                            onChange={e => updateEditField('title', e.target.value)}
+                            placeholder="Prompt title..."
+                        />
+                    ) : (
+                        <h3 className="prompt-card-title">{prompt.title}</h3>
+                    )}
                     <div className="prompt-card-meta">
                         <span className="prompt-card-time">{timeAgo}</span>
                         {prompt.languageDetected && prompt.languageDetected !== 'unknown' && (
@@ -36,27 +107,35 @@ export default function PromptCard({ prompt, onCopy, onFavorite, onDelete, isFav
                     </div>
                 </div>
                 <div className="prompt-card-actions">
-                    <button
-                        className={`btn btn-ghost btn-icon ${isFavorite ? 'text-saffron' : ''}`}
-                        onClick={() => onFavorite?.(prompt.promptId)}
-                        title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                    >
-                        <Star size={16} fill={isFavorite ? '#FF9933' : 'none'} />
-                    </button>
-                    <button
-                        className="btn btn-ghost btn-icon"
-                        onClick={handleCopy}
-                        title="Copy to clipboard"
-                    >
-                        {copied ? <Check size={16} color="#2E7D32" /> : <Copy size={16} />}
-                    </button>
-                    <button
-                        className="btn btn-ghost btn-icon"
-                        onClick={() => onDelete?.(prompt.promptId)}
-                        title="Delete"
-                    >
-                        <Trash2 size={16} />
-                    </button>
+                    {isEditing ? (
+                        <>
+                            <button className="btn btn-ghost btn-icon" onClick={cancelEditing} title="Cancel editing">
+                                <X size={16} />
+                            </button>
+                            <button className="btn btn-ghost btn-icon" onClick={saveEditing} title="Save changes" style={{ color: 'var(--success)' }}>
+                                <Save size={16} />
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <button className="btn btn-ghost btn-icon" onClick={startEditing} title="Edit prompt">
+                                <Pencil size={16} />
+                            </button>
+                            <button
+                                className={`btn btn-ghost btn-icon ${isFavorite ? 'text-saffron' : ''}`}
+                                onClick={() => onFavorite?.(prompt.promptId)}
+                                title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                            >
+                                <Star size={16} fill={isFavorite ? '#FF9933' : 'none'} />
+                            </button>
+                            <button className="btn btn-ghost btn-icon" onClick={handleCopy} title="Copy to clipboard">
+                                {copied ? <Check size={16} color="#2E7D32" /> : <Copy size={16} />}
+                            </button>
+                            <button className="btn btn-ghost btn-icon" onClick={() => onDelete?.(prompt.promptId)} title="Delete">
+                                <Trash2 size={16} />
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -65,47 +144,26 @@ export default function PromptCard({ prompt, onCopy, onFavorite, onDelete, isFav
                 {/* Summary */}
                 <div className="prompt-section">
                     <div className="prompt-section-label">Description</div>
-                    <p className="prompt-section-content">{prompt.summary}</p>
+                    {isEditing ? (
+                        <textarea
+                            className="prompt-edit-textarea"
+                            value={editData.summary}
+                            onChange={e => updateEditField('summary', e.target.value)}
+                            rows={3}
+                            placeholder="Describe what needs to be built..."
+                        />
+                    ) : (
+                        <p className="prompt-section-content">{prompt.summary}</p>
+                    )}
                 </div>
 
-                {/* Requirements */}
-                {prompt.requirements?.length > 0 && (
-                    <div className="prompt-section">
-                        <div className="prompt-section-label">Requirements</div>
-                        <ul className="prompt-list">
-                            {prompt.requirements.map((req, i) => (
-                                <li key={i}>{req}</li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
+                {/* Editable List Sections */}
+                {renderListSection('Requirements', 'requirements', prompt, isEditing, editData, updateEditListItem, removeEditListItem, addEditListItem)}
+                {renderListSection('Acceptance Criteria', 'acceptance_criteria', prompt, isEditing, editData, updateEditListItem, removeEditListItem, addEditListItem)}
+                {renderListSection('Constraints', 'constraints', prompt, isEditing, editData, updateEditListItem, removeEditListItem, addEditListItem)}
 
-                {/* Acceptance Criteria */}
-                {prompt.acceptance_criteria?.length > 0 && (
-                    <div className="prompt-section">
-                        <div className="prompt-section-label">Acceptance Criteria</div>
-                        <ul className="prompt-list">
-                            {prompt.acceptance_criteria.map((ac, i) => (
-                                <li key={i}>{ac}</li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-
-                {/* Constraints */}
-                {prompt.constraints?.length > 0 && (
-                    <div className="prompt-section">
-                        <div className="prompt-section-label">Constraints</div>
-                        <ul className="prompt-list">
-                            {prompt.constraints.map((c, i) => (
-                                <li key={i}>{c}</li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-
-                {/* Examples */}
-                {prompt.examples?.length > 0 && (
+                {/* Examples (read-only) */}
+                {!isEditing && prompt.examples?.length > 0 && (
                     <div className="prompt-section">
                         <div className="prompt-section-label">Examples</div>
                         <ul className="prompt-list">
@@ -148,6 +206,51 @@ export default function PromptCard({ prompt, onCopy, onFavorite, onDelete, isFav
                         <p>"{prompt.original_transcript}"</p>
                     </div>
                 </div>
+            )}
+        </div>
+    );
+}
+
+function renderListSection(label, field, prompt, isEditing, editData, onUpdate, onRemove, onAdd) {
+    const items = isEditing ? editData[field] : prompt[field];
+    if (!isEditing && (!items || items.length === 0)) return null;
+
+    return (
+        <div className="prompt-section">
+            <div className="prompt-section-label">{label}</div>
+            {isEditing ? (
+                <div className="prompt-edit-list">
+                    {editData[field]?.map((item, i) => (
+                        <div key={i} className="prompt-edit-list-item">
+                            <input
+                                className="prompt-edit-list-input"
+                                value={item}
+                                onChange={e => onUpdate(field, i, e.target.value)}
+                                placeholder={`${label} item...`}
+                            />
+                            <button
+                                className="btn btn-ghost btn-icon btn-sm"
+                                onClick={() => onRemove(field, i)}
+                                title="Remove"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    ))}
+                    <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => onAdd(field)}
+                        style={{ color: 'var(--saffron-deep)', marginTop: 4 }}
+                    >
+                        + Add {label.toLowerCase().replace(/s$/, '')}
+                    </button>
+                </div>
+            ) : (
+                <ul className="prompt-list">
+                    {items.map((item, i) => (
+                        <li key={i}>{item}</li>
+                    ))}
+                </ul>
             )}
         </div>
     );

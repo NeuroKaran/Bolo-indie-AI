@@ -39,3 +39,7 @@ tmp/
 
 # AI System and Agent directories
 .gemini/
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/

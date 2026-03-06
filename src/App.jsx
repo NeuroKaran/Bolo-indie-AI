@@ -5,15 +5,18 @@ import FloatingBar from './components/FloatingBar';
 import HistoryPanel from './components/HistoryPanel';
 import SettingsPanel from './components/SettingsPanel';
 import PromptCard from './components/PromptCard';
+import Onboarding from './components/Onboarding';
 import Toast, { createToast } from './components/Toast';
 import { copyPromptToClipboard } from './services/clipboardService';
 import {
   getPromptHistory,
   savePrompt,
   deletePrompt,
+  updatePrompt,
   getFavorites,
   toggleFavorite,
   getSettings,
+  isOnboardingComplete,
 } from './services/storageService';
 
 export default function App() {
@@ -23,19 +26,43 @@ export default function App() {
   const [favorites, setFavorites] = useState([]);
   const [toasts, setToasts] = useState([]);
   const [latestPrompt, setLatestPrompt] = useState(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Load data on mount
   useEffect(() => {
     setPrompts(getPromptHistory());
     setFavorites(getFavorites());
+
+    // Check if onboarding needed
+    if (!isOnboardingComplete()) {
+      setShowOnboarding(true);
+    }
   }, []);
 
-  // Global hotkey: Ctrl+Space
+  // Listen for Tauri global hotkey event (system-wide Ctrl+Space)
+  useEffect(() => {
+    let unlisten;
+    const isTauri = !!window.__TAURI__;
+
+    if (isTauri) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        listen('toggle-recording', () => {
+          if (!showOnboarding) setIsBarOpen(true);
+        }).then(fn => { unlisten = fn; });
+      });
+    }
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [showOnboarding]);
+
+  // Browser fallback hotkey: Ctrl+Space (only when not in Tauri)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.ctrlKey && e.code === 'Space') {
         e.preventDefault();
-        setIsBarOpen(true);
+        if (!showOnboarding) setIsBarOpen(true);
       }
       if (e.key === 'Escape' && isBarOpen) {
         setIsBarOpen(false);
@@ -44,7 +71,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isBarOpen]);
+  }, [isBarOpen, showOnboarding]);
 
   // Toast helper
   const showToast = useCallback((message, type = 'success') => {
@@ -93,10 +120,43 @@ export default function App() {
     showToast('Prompt deleted');
   }, [latestPrompt, showToast]);
 
+  // Handle prompt update (editing)
+  const handleUpdate = useCallback((promptId, updates) => {
+    const updated = updatePrompt(promptId, updates);
+    setPrompts(updated);
+    // Also update latestPrompt if it's the one being edited
+    if (latestPrompt?.promptId === promptId) {
+      setLatestPrompt(prev => ({ ...prev, ...updates }));
+    }
+    showToast('Prompt updated ✓');
+  }, [latestPrompt, showToast]);
+
   // Handle copy
   const handleCopy = useCallback(() => {
     showToast('Copied to clipboard! 📋');
   }, [showToast]);
+
+  // Refresh data (used by import/clear)
+  const handleRefresh = useCallback(() => {
+    setPrompts(getPromptHistory());
+    setFavorites(getFavorites());
+  }, []);
+
+  // Onboarding complete
+  const handleOnboardingComplete = useCallback(() => {
+    setShowOnboarding(false);
+    showToast('Welcome to Bolo! 🎉 Press Ctrl+Space to start.', 'success');
+  }, [showToast]);
+
+  // Show onboarding if needed
+  if (showOnboarding) {
+    return (
+      <>
+        <Onboarding onComplete={handleOnboardingComplete} />
+        <Toast toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -178,6 +238,7 @@ export default function App() {
                     onCopy={handleCopy}
                     onFavorite={handleFavorite}
                     onDelete={handleDelete}
+                    onUpdate={handleUpdate}
                     isFavorite={favorites.includes(latestPrompt.promptId)}
                   />
                 </div>
@@ -197,6 +258,9 @@ export default function App() {
                 onCopy={handleCopy}
                 onFavorite={handleFavorite}
                 onDelete={handleDelete}
+                onUpdate={handleUpdate}
+                onRefresh={handleRefresh}
+                onToast={showToast}
               />
             )}
           </>
@@ -209,6 +273,9 @@ export default function App() {
             onCopy={handleCopy}
             onFavorite={handleFavorite}
             onDelete={handleDelete}
+            onUpdate={handleUpdate}
+            onRefresh={handleRefresh}
+            onToast={showToast}
           />
         )}
 
@@ -233,4 +300,3 @@ export default function App() {
     </div>
   );
 }
-

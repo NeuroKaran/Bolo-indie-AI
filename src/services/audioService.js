@@ -9,8 +9,13 @@ class AudioService {
         this.audioChunks = [];
         this.audioContext = null;
         this.analyserNode = null;
+        this.sourceNode = null;
         this.isRecording = false;
         this.onDataCallback = null;
+
+        // PCM streaming capture
+        this.pcmProcessorNode = null;
+        this.pcmCallback = null;
     }
 
     async requestMicAccess() {
@@ -32,16 +37,18 @@ class AudioService {
     }
 
     initAudioContext() {
-        if (!this.audioContext) {
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (!this.audioContext || this.audioContext.state === 'closed') {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: 16000,
+            });
         }
 
-        if (this.mediaStream) {
-            const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+        if (this.mediaStream && !this.sourceNode) {
+            this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
             this.analyserNode = this.audioContext.createAnalyser();
             this.analyserNode.fftSize = 256;
             this.analyserNode.smoothingTimeConstant = 0.7;
-            source.connect(this.analyserNode);
+            this.sourceNode.connect(this.analyserNode);
         }
     }
 
@@ -107,7 +114,69 @@ class AudioService {
         });
     }
 
+    // ---- PCM Streaming Capture (for WebSocket STT) ----
+
+    /**
+     * Start capturing raw PCM Int16 audio and push chunks via callback.
+     * Uses ScriptProcessorNode to tap into the AudioContext pipeline.
+     * @param {function(Int16Array)} onPCMChunk - Called with each PCM Int16 chunk
+     * @returns {boolean} success
+     */
+    startStreamingCapture(onPCMChunk) {
+        if (!this.mediaStream) return false;
+
+        this.initAudioContext();
+        this.pcmCallback = onPCMChunk;
+
+        // Create a ScriptProcessorNode with buffer size 2048 (good balance of latency vs overhead)
+        // At 16kHz, 2048 samples ≈ 128ms per chunk
+        const bufferSize = 2048;
+        this.pcmProcessorNode = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+
+        this.pcmProcessorNode.onaudioprocess = (event) => {
+            if (!this.pcmCallback) return;
+
+            const floatData = event.inputBuffer.getChannelData(0);
+
+            // Convert Float32 [-1, 1] to Int16 [-32768, 32767]
+            const int16Data = new Int16Array(floatData.length);
+            for (let i = 0; i < floatData.length; i++) {
+                const s = Math.max(-1, Math.min(1, floatData[i]));
+                int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+
+            this.pcmCallback(int16Data);
+        };
+
+        // Connect: source -> pcmProcessor -> destination (required for processing to work)
+        this.sourceNode.connect(this.pcmProcessorNode);
+        this.pcmProcessorNode.connect(this.audioContext.destination);
+
+        console.log('[AudioService] PCM streaming capture started (16kHz, Int16, mono)');
+        return true;
+    }
+
+    /**
+     * Stop PCM streaming capture.
+     */
+    stopStreamingCapture() {
+        if (this.pcmProcessorNode) {
+            try {
+                this.pcmProcessorNode.disconnect();
+                if (this.sourceNode) {
+                    this.sourceNode.disconnect(this.pcmProcessorNode);
+                }
+            } catch { /* ignore disconnect errors */ }
+            this.pcmProcessorNode = null;
+        }
+        this.pcmCallback = null;
+        console.log('[AudioService] PCM streaming capture stopped');
+    }
+
     cleanup() {
+        // Stop PCM streaming
+        this.stopStreamingCapture();
+
         if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
             this.mediaRecorder.stop();
         }
@@ -119,6 +188,7 @@ class AudioService {
             this.audioContext.close();
             this.audioContext = null;
         }
+        this.sourceNode = null;
         this.analyserNode = null;
         this.isRecording = false;
     }
