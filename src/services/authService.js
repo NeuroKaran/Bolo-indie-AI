@@ -156,6 +156,22 @@ export async function getUserProfile(userId) {
         console.error('[Auth] Profile fetch error:', error);
         return null;
     }
+
+    // Simulate daily reset for frontend display
+    if (data) {
+        const today = new Date().toISOString().split('T')[0];
+        const lastReset = data.last_reset_date || today;
+
+        if (lastReset < today) {
+            let planLimit = 0;
+            if (data.plan === 'power') planLimit = 30;
+            else if (data.plan === 'pro') planLimit = 10;
+
+            data.daily_credits = planLimit;
+            // Note: We don't save back to DB here; that happens upon actual usage in `decrement_credits`.
+        }
+    }
+
     return data;
 }
 

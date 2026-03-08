@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
         // Check credits
         const { data: profile } = await supabase
             .from('profiles')
-            .select('daily_credits, topup_credits')
+            .select('daily_credits, topup_credits, plan, last_reset_date')
             .eq('id', user.id)
             .single();
 
@@ -84,7 +84,17 @@ Deno.serve(async (req) => {
             });
         }
 
-        const hasCredits = (profile.daily_credits > 0) || (profile.topup_credits > 0);
+        const today = new Date().toISOString().split('T')[0];
+        const lastReset = profile.last_reset_date || today;
+        let simulatedDaily = profile.daily_credits;
+
+        if (lastReset < today) {
+            if (profile.plan === 'power') simulatedDaily = 30;
+            else if (profile.plan === 'pro') simulatedDaily = 10;
+            else simulatedDaily = 0;
+        }
+
+        const hasCredits = (simulatedDaily > 0) || (profile.topup_credits > 0);
         if (!hasCredits) {
             return new Response(JSON.stringify({ error: 'No credits remaining. Please upgrade your plan.' }), {
                 status: 402,
