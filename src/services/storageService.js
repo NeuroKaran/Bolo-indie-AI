@@ -1,155 +1,226 @@
 // ========================================
-// Storage Service — Local Persistence
+// Storage Service — Supabase DB + Local Cache
 // ========================================
 
+import { supabase } from './supabaseClient';
+
+// LocalStorage keys (used as offline cache)
 const STORAGE_KEYS = {
-    PROMPTS: 'bolo_prompts',
-    FAVORITES: 'bolo_favorites',
     SETTINGS: 'bolo_settings',
     ONBOARDING: 'bolo_onboarding_complete',
+    PROMPTS_CACHE: 'bolo_prompts_cache',
 };
 
-const MAX_HISTORY = 50;
+// ---- Prompt History (Supabase DB) ----
 
-// ---- Prompt History ----
+/**
+ * Get prompt history from Supabase DB
+ */
+export async function getPromptHistory(userId) {
+    if (!userId) return getCachedPrompts();
 
-export function getPromptHistory() {
     try {
-        const data = localStorage.getItem(STORAGE_KEYS.PROMPTS);
+        const { data, error } = await supabase
+            .from('prompts')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+        if (error) throw error;
+
+        // Map DB columns to app format
+        const prompts = (data || []).map(mapDbPromptToApp);
+
+        // Update local cache
+        localStorage.setItem(STORAGE_KEYS.PROMPTS_CACHE, JSON.stringify(prompts));
+
+        return prompts;
+    } catch (err) {
+        console.error('[Storage] Failed to fetch prompts:', err);
+        return getCachedPrompts();
+    }
+}
+
+/**
+ * Save a new prompt to Supabase DB
+ */
+export async function savePrompt(userId, prompt) {
+    if (!userId) return [];
+
+    try {
+        const { data, error } = await supabase
+            .from('prompts')
+            .insert({
+                user_id: userId,
+                title: prompt.title,
+                summary: prompt.summary,
+                requirements: prompt.requirements || [],
+                acceptance_criteria: prompt.acceptance_criteria || [],
+                constraints: prompt.constraints || [],
+                examples: prompt.examples || [],
+                original_transcript: prompt.original_transcript,
+                confidence: prompt.confidence,
+                language_detected: prompt.languageDetected,
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Refresh the full history
+        return getPromptHistory(userId);
+    } catch (err) {
+        console.error('[Storage] Failed to save prompt:', err);
+        return [];
+    }
+}
+
+/**
+ * Update a prompt in Supabase DB
+ */
+export async function updatePrompt(userId, promptId, updates) {
+    if (!userId) return [];
+
+    try {
+        const dbUpdates = {};
+        if (updates.title !== undefined) dbUpdates.title = updates.title;
+        if (updates.summary !== undefined) dbUpdates.summary = updates.summary;
+        if (updates.requirements !== undefined) dbUpdates.requirements = updates.requirements;
+        if (updates.acceptance_criteria !== undefined) dbUpdates.acceptance_criteria = updates.acceptance_criteria;
+        if (updates.constraints !== undefined) dbUpdates.constraints = updates.constraints;
+        if (updates.examples !== undefined) dbUpdates.examples = updates.examples;
+
+        const { error } = await supabase
+            .from('prompts')
+            .update(dbUpdates)
+            .eq('id', promptId)
+            .eq('user_id', userId);
+
+        if (error) throw error;
+
+        return getPromptHistory(userId);
+    } catch (err) {
+        console.error('[Storage] Failed to update prompt:', err);
+        return [];
+    }
+}
+
+/**
+ * Delete a prompt from Supabase DB
+ */
+export async function deletePrompt(userId, promptId) {
+    if (!userId) return [];
+
+    try {
+        const { error } = await supabase
+            .from('prompts')
+            .delete()
+            .eq('id', promptId)
+            .eq('user_id', userId);
+
+        if (error) throw error;
+
+        return getPromptHistory(userId);
+    } catch (err) {
+        console.error('[Storage] Failed to delete prompt:', err);
+        return [];
+    }
+}
+
+/**
+ * Toggle favorite on a prompt
+ */
+export async function toggleFavorite(userId, promptId) {
+    if (!userId) return [];
+
+    try {
+        // Get current state
+        const { data: prompt } = await supabase
+            .from('prompts')
+            .select('is_favorite')
+            .eq('id', promptId)
+            .eq('user_id', userId)
+            .single();
+
+        if (!prompt) return [];
+
+        const { error } = await supabase
+            .from('prompts')
+            .update({ is_favorite: !prompt.is_favorite })
+            .eq('id', promptId)
+            .eq('user_id', userId);
+
+        if (error) throw error;
+
+        return getPromptHistory(userId);
+    } catch (err) {
+        console.error('[Storage] Failed to toggle favorite:', err);
+        return [];
+    }
+}
+
+/**
+ * Get list of favorite prompt IDs
+ */
+export async function getFavorites(userId) {
+    if (!userId) return [];
+
+    try {
+        const { data, error } = await supabase
+            .from('prompts')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('is_favorite', true);
+
+        if (error) throw error;
+
+        return (data || []).map(p => p.id);
+    } catch (err) {
+        console.error('[Storage] Failed to fetch favorites:', err);
+        return [];
+    }
+}
+
+// ---- Local Cache Helpers ----
+
+function getCachedPrompts() {
+    try {
+        const data = localStorage.getItem(STORAGE_KEYS.PROMPTS_CACHE);
         return data ? JSON.parse(data) : [];
     } catch {
         return [];
     }
 }
 
-export function savePrompt(prompt) {
-    const history = getPromptHistory();
-    history.unshift(prompt);
-
-    // Keep only last 50
-    if (history.length > MAX_HISTORY) {
-        history.length = MAX_HISTORY;
-    }
-
-    localStorage.setItem(STORAGE_KEYS.PROMPTS, JSON.stringify(history));
-    return history;
-}
-
-export function updatePrompt(promptId, updates) {
-    const history = getPromptHistory();
-    const index = history.findIndex(p => p.promptId === promptId);
-    if (index !== -1) {
-        history[index] = { ...history[index], ...updates };
-        localStorage.setItem(STORAGE_KEYS.PROMPTS, JSON.stringify(history));
-    }
-    return history;
-}
-
-export function deletePrompt(promptId) {
-    const history = getPromptHistory().filter(p => p.promptId !== promptId);
-    localStorage.setItem(STORAGE_KEYS.PROMPTS, JSON.stringify(history));
-    return history;
-}
-
-export function clearHistory() {
-    localStorage.removeItem(STORAGE_KEYS.PROMPTS);
-}
-
-// ---- Export / Import ----
-
-export function exportHistory() {
-    const prompts = getPromptHistory();
-    const favorites = getFavorites();
-    const data = {
-        version: '1.0',
-        exportedAt: new Date().toISOString(),
-        prompts,
-        favorites,
+/**
+ * Map DB prompt row to app format
+ */
+function mapDbPromptToApp(row) {
+    return {
+        promptId: row.id,
+        title: row.title,
+        summary: row.summary,
+        requirements: row.requirements || [],
+        acceptance_criteria: row.acceptance_criteria || [],
+        constraints: row.constraints || [],
+        examples: row.examples || [],
+        original_transcript: row.original_transcript,
+        confidence: row.confidence,
+        languageDetected: row.language_detected,
+        isFavorite: row.is_favorite,
+        createdAt: row.created_at,
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `bolo-prompts-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
 }
 
-export function importHistory(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = JSON.parse(e.target.result);
-                if (!data.prompts || !Array.isArray(data.prompts)) {
-                    reject(new Error('Invalid file format'));
-                    return;
-                }
-
-                // Merge with existing — avoid duplicates by promptId
-                const existing = getPromptHistory();
-                const existingIds = new Set(existing.map(p => p.promptId));
-                const newPrompts = data.prompts.filter(p => !existingIds.has(p.promptId));
-                const merged = [...newPrompts, ...existing].slice(0, MAX_HISTORY);
-
-                localStorage.setItem(STORAGE_KEYS.PROMPTS, JSON.stringify(merged));
-
-                // Merge favorites
-                if (data.favorites) {
-                    const existingFavs = getFavorites();
-                    const mergedFavs = [...new Set([...existingFavs, ...data.favorites])];
-                    localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(mergedFavs));
-                }
-
-                resolve({ promptCount: newPrompts.length, total: merged.length });
-            } catch (err) {
-                reject(new Error('Failed to parse import file'));
-            }
-        };
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsText(file);
-    });
-}
-
-// ---- Favorites ----
-
-export function getFavorites() {
-    try {
-        const data = localStorage.getItem(STORAGE_KEYS.FAVORITES);
-        return data ? JSON.parse(data) : [];
-    } catch {
-        return [];
-    }
-}
-
-export function toggleFavorite(promptId) {
-    const favorites = getFavorites();
-    const index = favorites.indexOf(promptId);
-
-    if (index === -1) {
-        favorites.push(promptId);
-    } else {
-        favorites.splice(index, 1);
-    }
-
-    localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(favorites));
-    return favorites;
-}
-
-export function isFavorite(promptId) {
-    return getFavorites().includes(promptId);
-}
-
-// ---- Settings ----
+// ---- Settings (Local + Profile) ----
 
 const DEFAULT_SETTINGS = {
-    sttProvider: 'sarvam', // 'sarvam' | 'webspeech'
-    sarvamApiKey: '',
-    geminiApiKey: '',
+    sttProvider: 'sarvam',
+    llmProvider: 'gemini',
     language: 'unknown',
-    sttMode: 'translate', // 'transcribe' | 'translate' | 'codemix'
+    sttMode: 'translate',
     autoCopy: true,
-    localOnly: false,
     hotkey: 'ctrl+space',
 };
 
@@ -158,15 +229,9 @@ export function getSettings() {
         const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
         const stored = data ? JSON.parse(data) : {};
 
-        // Env vars as fallback defaults (Vite exposes VITE_ prefixed vars)
-        const envSarvamKey = import.meta.env.VITE_SARVAM_API_KEY || '';
-        const envGeminiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-
         return {
             ...DEFAULT_SETTINGS,
-            sarvamApiKey: envSarvamKey,  // env var as base default
-            geminiApiKey: envGeminiKey,
-            ...stored,                   // user's localStorage overrides
+            ...stored,
         };
     } catch {
         return { ...DEFAULT_SETTINGS };
@@ -181,7 +246,7 @@ export function saveSettings(settings) {
 
 export function resetSettings() {
     localStorage.removeItem(STORAGE_KEYS.SETTINGS);
-    return getSettings(); // Will fall back to env vars + defaults
+    return { ...DEFAULT_SETTINGS };
 }
 
 // ---- Onboarding ----
@@ -196,4 +261,26 @@ export function completeOnboarding() {
 
 export function resetOnboarding() {
     localStorage.removeItem(STORAGE_KEYS.ONBOARDING);
+}
+
+// ---- Export / Import (Legacy support) ----
+
+export async function exportHistory(userId) {
+    const prompts = await getPromptHistory(userId);
+    const data = {
+        version: '2.0',
+        exportedAt: new Date().toISOString(),
+        prompts,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bolo-prompts-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+export function clearHistory() {
+    localStorage.removeItem(STORAGE_KEYS.PROMPTS_CACHE);
 }

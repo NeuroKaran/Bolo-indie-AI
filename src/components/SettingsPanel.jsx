@@ -1,13 +1,38 @@
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Mic, Brain, Globe, Shield, Keyboard, Save, RotateCcw } from 'lucide-react';
+import { Settings as SettingsIcon, Mic, Brain, Globe, Shield, Keyboard, Save, RotateCcw, User, LogOut, CreditCard } from 'lucide-react';
 import { getSettings, saveSettings, resetSettings } from '../services/storageService';
+import { getUserProfile } from '../services/authService';
 import { SUPPORTED_LANGUAGES } from '../services/sttService';
+import { initiatePayment } from '../services/paymentService';
 
 /**
- * Settings panel — API keys, STT/LLM config, language preferences
+ * Settings panel — Account info, STT/LLM config, language preferences
+ * API keys removed — managed server-side now
  */
-export default function SettingsPanel({ onToast, onSettingsChange }) {
+export default function SettingsPanel({ onToast, onSettingsChange, user, onSignOut }) {
     const [settings, setSettingsState] = useState(getSettings);
+    const [profile, setProfile] = useState(null);
+
+    // Fetch user profile on mount
+    useEffect(() => {
+        if (user?.id) {
+            getUserProfile(user.id).then(p => setProfile(p));
+        }
+    }, [user]);
+
+    const handleUpgrade = async (packageId, amount) => {
+        try {
+            onToast('Initiating payment...', 'info');
+            await initiatePayment(packageId, amount);
+            onToast('Payment successful! 🎉', 'success');
+            const updated = await getUserProfile(user.id);
+            setProfile(updated);
+        } catch (err) {
+            if (err.message !== 'Payment cancelled') {
+                onToast(`Payment failed: ${err.message}`, 'error');
+            }
+        }
+    };
 
     const update = (key, value) => {
         setSettingsState(prev => ({ ...prev, [key]: value }));
@@ -36,6 +61,89 @@ export default function SettingsPanel({ onToast, onSettingsChange }) {
                 </h2>
             </div>
 
+            {/* Account Section */}
+            <div className="settings-group">
+                <h3 className="settings-group-title">
+                    <User size={18} /> Account
+                </h3>
+
+                <div className="settings-item">
+                    <div className="settings-item-info">
+                        <div className="settings-item-label">Email</div>
+                        <div className="settings-item-desc">{user?.email || 'Not signed in'}</div>
+                    </div>
+                </div>
+
+                <div className="settings-item">
+                    <div className="settings-item-info">
+                        <div className="settings-item-label">Plan</div>
+                        <div className="settings-item-desc" style={{ textTransform: 'capitalize' }}>
+                            {profile?.plan || 'Free'} Plan
+                        </div>
+                    </div>
+                    <span className="plan-badge">{profile?.plan === 'pro' ? '⭐ Pro' : '🆓 Free'}</span>
+                </div>
+
+                <div className="settings-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                    <div className="settings-item-info" style={{ marginBottom: 12 }}>
+                        <div className="settings-item-label">
+                            <CreditCard size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                            Credits Overview
+                        </div>
+                        <div className="settings-item-desc">
+                            Daily: {profile?.daily_credits ?? 0} | Top-up: {profile?.topup_credits ?? 0}
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div className="credits-bar" style={{ flex: 1, height: 6, margin: 0 }}>
+                                <div
+                                    className="credits-bar-fill"
+                                    style={{
+                                        width: `${Math.min(100, ((profile?.daily_credits ?? 0) / 10) * 100)}%`,
+                                        backgroundColor: 'var(--saffron-light)'
+                                    }}
+                                />
+                            </div>
+                            <span style={{ fontSize: '0.75rem', width: 40, textAlign: 'right' }}>Daily</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div className="credits-bar" style={{ flex: 1, height: 6, margin: 0 }}>
+                                <div
+                                    className="credits-bar-fill"
+                                    style={{
+                                        width: `${Math.min(100, ((profile?.topup_credits ?? 0) / 50) * 100)}%`,
+                                        backgroundColor: 'var(--saffron-deep)'
+                                    }}
+                                />
+                            </div>
+                            <span style={{ fontSize: '0.75rem', width: 40, textAlign: 'right' }}>Top-up</span>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                        <button className="btn btn-primary" onClick={() => handleUpgrade('topup_mini', 99)} style={{ flex: 1, fontSize: '0.8rem', padding: '6px' }}>
+                            +50 Credits (₹99)
+                        </button>
+                        {profile?.plan !== 'pro' && (
+                            <button className="btn btn-secondary" onClick={() => handleUpgrade('pro_monthly', 299)} style={{ flex: 1, fontSize: '0.8rem', padding: '6px' }}>
+                                ⭐ Pro (₹299/mo)
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="settings-item">
+                    <div className="settings-item-info">
+                        <div className="settings-item-label" style={{ color: 'var(--saffron-deep)' }}>Sign Out</div>
+                    </div>
+                    <button className="btn btn-secondary" onClick={onSignOut} style={{ gap: 6, fontSize: '0.8rem' }}>
+                        <LogOut size={14} /> Sign Out
+                    </button>
+                </div>
+            </div>
+
             {/* STT Provider */}
             <div className="settings-group">
                 <h3 className="settings-group-title">
@@ -56,28 +164,6 @@ export default function SettingsPanel({ onToast, onSettingsChange }) {
                         <option value="webspeech">Web Speech API (Free)</option>
                     </select>
                 </div>
-
-                {settings.sttProvider === 'sarvam' && (
-                    <div className="settings-item">
-                        <div className="settings-item-info">
-                            <div className="settings-item-label">Sarvam AI API Key</div>
-                            <div className="settings-item-desc">
-                                Get your key from{' '}
-                                <a href="https://dashboard.sarvam.ai" target="_blank" rel="noopener noreferrer"
-                                    style={{ color: 'var(--saffron-deep)' }}>
-                                    dashboard.sarvam.ai
-                                </a>
-                            </div>
-                        </div>
-                        <input
-                            type="password"
-                            className="settings-input"
-                            placeholder="Enter API key..."
-                            value={settings.sarvamApiKey}
-                            onChange={e => update('sarvamApiKey', e.target.value)}
-                        />
-                    </div>
-                )}
 
                 <div className="settings-item">
                     <div className="settings-item-info">
@@ -105,22 +191,17 @@ export default function SettingsPanel({ onToast, onSettingsChange }) {
 
                 <div className="settings-item">
                     <div className="settings-item-info">
-                        <div className="settings-item-label">Gemini API Key</div>
-                        <div className="settings-item-desc">
-                            Get your key from{' '}
-                            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"
-                                style={{ color: 'var(--saffron-deep)' }}>
-                                AI Studio
-                            </a>
-                        </div>
+                        <div className="settings-item-label">LLM Provider</div>
+                        <div className="settings-item-desc">Choose your prompt structuring engine</div>
                     </div>
-                    <input
-                        type="password"
-                        className="settings-input"
-                        placeholder="Enter API key..."
-                        value={settings.geminiApiKey}
-                        onChange={e => update('geminiApiKey', e.target.value)}
-                    />
+                    <select
+                        className="settings-select"
+                        value={settings.llmProvider || 'gemini'}
+                        onChange={e => update('llmProvider', e.target.value)}
+                    >
+                        <option value="gemini">Gemini 2.5 Flash</option>
+                        <option value="sarvam-indus">Sarvam INDUS (sarvam-m)</option>
+                    </select>
                 </div>
             </div>
 
@@ -180,7 +261,7 @@ export default function SettingsPanel({ onToast, onSettingsChange }) {
                 <div className="settings-item">
                     <div className="settings-item-info">
                         <div className="settings-item-label">Activate Recording</div>
-                        <div className="settings-item-desc">Global hotkey to start voice recording</div>
+                        <div className="settings-item-desc">Hotkey to start voice recording</div>
                     </div>
                     <div className="kbd" style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
                         Ctrl + Space

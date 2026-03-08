@@ -1,10 +1,12 @@
 // ========================================
-// Prompt Service — Gemini 2.5 Flash Integration
+// Prompt Service — Supabase Edge Function Proxy
 // ========================================
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+import { supabase, getAccessToken } from './supabaseClient';
 
-const SYSTEM_PROMPT = `You are Bolo, a prompt structuring assistant for Indian developers. 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+
+export const SYSTEM_PROMPT = `You are Bolo, a prompt structuring assistant for Indian developers. 
 Your job is to take a raw speech transcript (often from Hinglish or Indian language speech converted to English) and transform it into a clean, structured developer prompt that can be directly pasted into AI coding assistants like Cursor, GitHub Copilot, or ChatGPT.
 
 IMPORTANT RULES:
@@ -28,79 +30,75 @@ You MUST respond in valid JSON format with this exact structure:
 ONLY return the JSON object, no other text.`;
 
 /**
- * Structure a transcript into a developer prompt using Gemini 2.5 Flash
- * 
+ * Helper: call the structure-prompt Edge Function with given token
+ */
+async function callStructureFunction(token, transcript, provider) {
+    return fetch(`${SUPABASE_URL}/functions/v1/structure-prompt`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ transcript, provider }),
+    });
+}
+
+/**
+ * Structure a transcript into a developer prompt via Edge Function.
+ * Supports both Gemini and Sarvam INDUS providers (server-side).
+ *
  * @param {string} transcript - Raw transcript text
- * @param {string} apiKey - Google AI Studio API key
+ * @param {string} provider - LLM provider: 'gemini' | 'sarvam-indus'
  * @returns {Promise<object>} Structured prompt object
  */
-export async function structurePrompt(transcript, apiKey) {
-    if (!apiKey) {
-        throw new Error('Gemini API key is required. Add it in Settings.');
-    }
-
+export async function structurePrompt(transcript, provider = 'gemini') {
     if (!transcript || transcript.trim().length === 0) {
         throw new Error('No transcript to structure.');
     }
 
-    const url = `${GEMINI_API_URL}?key=${apiKey}`;
-
-    const requestBody = {
-        contents: [
-            {
-                role: 'user',
-                parts: [
-                    {
-                        text: `${SYSTEM_PROMPT}\n\n---\n\nTranscript to structure:\n"${transcript}"\n\nRespond with ONLY the JSON object.`,
-                    },
-                ],
-            },
-        ],
-        generationConfig: {
-            temperature: 0.3,
-            topP: 0.8,
-            topK: 40,
-            maxOutputTokens: 1024,
-            responseMimeType: 'application/json',
-        },
-    };
-
     try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody),
-        });
+        let token = await getAccessToken();
+        if (!token) {
+            throw new Error('Not authenticated. Please sign in.');
+        }
+
+        let response = await callStructureFunction(token, transcript, provider);
+
+        // If 401, try refreshing the session and retry once
+        if (response.status === 401) {
+            console.warn('[Prompt] Got 401 — refreshing session and retrying…');
+            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+            if (refreshError || !refreshData.session) {
+                throw new Error('Session expired. Please sign in again.');
+            }
+            token = refreshData.session.access_token;
+            response = await callStructureFunction(token, transcript, provider);
+        }
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            const errorMsg = errorData?.error?.message || `${response.status} ${response.statusText}`;
-            throw new Error(`Gemini API error: ${errorMsg}`);
+            const errorMsg = errorData.error || `${response.status} ${response.statusText}`;
+            if (response.status === 401) {
+                throw new Error('Session expired. Please sign in again.');
+            }
+            if (response.status === 402) {
+                throw new Error('No credits remaining. Please upgrade your plan.');
+            }
+            throw new Error(`Prompt structuring failed: ${errorMsg}`);
         }
 
         const data = await response.json();
 
-        // Extract text from Gemini response  
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (!text) {
-            throw new Error('Empty response from Gemini');
-        }
-
-        // Parse JSON from response
-        const parsed = JSON.parse(text);
-
-        // Validate structure
         return {
-            title: parsed.title || 'Untitled Prompt',
-            summary: parsed.summary || transcript.slice(0, 200),
-            requirements: Array.isArray(parsed.requirements) ? parsed.requirements : [],
-            acceptance_criteria: Array.isArray(parsed.acceptance_criteria) ? parsed.acceptance_criteria : [],
-            constraints: Array.isArray(parsed.constraints) ? parsed.constraints : [],
-            examples: Array.isArray(parsed.examples) ? parsed.examples : [],
+            title: data.title || 'Untitled Prompt',
+            summary: data.summary || transcript.slice(0, 200),
+            requirements: Array.isArray(data.requirements) ? data.requirements : [],
+            acceptance_criteria: Array.isArray(data.acceptance_criteria) ? data.acceptance_criteria : [],
+            constraints: Array.isArray(data.constraints) ? data.constraints : [],
+            examples: Array.isArray(data.examples) ? data.examples : [],
         };
     } catch (err) {
-        if (err.message.includes('API key')) throw err;
+        if (err.message.includes('credits') || err.message.includes('authenticated')) throw err;
 
         console.error('Prompt structuring error:', err);
 
@@ -112,7 +110,7 @@ export async function structurePrompt(transcript, apiKey) {
 /**
  * Fallback: simple local structuring when LLM is unavailable
  */
-function fallbackStructure(transcript) {
+export function fallbackStructure(transcript) {
     const sentences = transcript.split(/[.!?]+/).filter(s => s.trim());
 
     return {
@@ -157,4 +155,13 @@ export function formatPromptAsMarkdown(prompt) {
     }
 
     return md.trim();
+}
+
+/**
+ * Route request to the configured LLM provider
+ * (Simplified — both providers go through the same Edge Function)
+ */
+export async function structurePromptWithProvider(transcript, settings) {
+    const provider = settings.llmProvider || 'gemini';
+    return structurePrompt(transcript, provider);
 }

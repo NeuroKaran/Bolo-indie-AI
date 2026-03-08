@@ -1,16 +1,15 @@
 import { useState, useMemo, useRef } from 'react';
-import { Search, Clock, Star, Download, Upload, Trash2 } from 'lucide-react';
+import { Search, Clock, Star, Download, Trash2 } from 'lucide-react';
 import PromptCard from './PromptCard';
-import { exportHistory, importHistory, clearHistory } from '../services/storageService';
+import { exportHistory, clearHistory } from '../services/storageService';
 
 /**
- * History panel showing past prompts with search, filter, export/import.
+ * History panel showing past prompts with search, filter, export.
  */
-export default function HistoryPanel({ prompts, favorites, onCopy, onFavorite, onDelete, onUpdate, onRefresh, onToast }) {
+export default function HistoryPanel({ prompts, favorites, onCopy, onFavorite, onDelete, onUpdate, onRefresh, onToast, userId }) {
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState('all'); // all | favorites
     const [showClearConfirm, setShowClearConfirm] = useState(false);
-    const fileInputRef = useRef(null);
 
     const filtered = useMemo(() => {
         let list = prompts;
@@ -33,25 +32,9 @@ export default function HistoryPanel({ prompts, favorites, onCopy, onFavorite, o
         return list;
     }, [prompts, favorites, search, filter]);
 
-    const handleExport = () => {
-        exportHistory();
+    const handleExport = async () => {
+        await exportHistory(userId);
         onToast?.('Prompts exported! 📦', 'success');
-    };
-
-    const handleImport = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        try {
-            const result = await importHistory(file);
-            onToast?.(`Imported ${result.promptCount} new prompts!`, 'success');
-            onRefresh?.();
-        } catch (err) {
-            onToast?.(err.message || 'Import failed', 'error');
-        }
-
-        // Reset file input
-        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const handleClearAll = () => {
@@ -71,21 +54,9 @@ export default function HistoryPanel({ prompts, favorites, onCopy, onFavorite, o
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span className="section-count">{prompts.length} prompts</span>
                     {prompts.length > 0 && (
-                        <>
-                            <button className="btn btn-ghost btn-icon btn-sm" onClick={handleExport} title="Export prompts">
-                                <Download size={16} />
-                            </button>
-                            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => fileInputRef.current?.click()} title="Import prompts">
-                                <Upload size={16} />
-                            </button>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept=".json"
-                                style={{ display: 'none' }}
-                                onChange={handleImport}
-                            />
-                        </>
+                        <button className="btn btn-ghost btn-icon btn-sm" onClick={handleExport} title="Export prompts">
+                            <Download size={16} />
+                        </button>
                     )}
                 </div>
             </div>

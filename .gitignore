@@ -43,3 +43,21 @@ tmp/
 # Tauri / Rust
 src-tauri/target/
 src-tauri/gen/
+
+# Secrets & Sensitive Files
+*.pem
+*.key
+*.cert
+*.crt
+*.ca-bundle
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+secrets.json
+*.secret
+supabase/.env
+supabase/.temp/

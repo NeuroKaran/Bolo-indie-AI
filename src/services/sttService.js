@@ -1,78 +1,89 @@
 // ========================================
-// STT Service — Sarvam AI Integration
+// STT Service — Supabase Edge Function Proxy
 // ========================================
 
-const SARVAM_API_URL = 'https://api.sarvam.ai/speech-to-text-translate';
+import { supabase, getAccessToken } from './supabaseClient';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 /**
- * Transcribe audio using Sarvam AI's Saaras v3 model.
- * Uses 'translate' mode to convert speech from any Indian language to English.
+ * Helper: call the transcribe Edge Function with given token + formData
+ */
+async function callTranscribeFunction(token, formData) {
+    return fetch(`${SUPABASE_URL}/functions/v1/transcribe`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+    });
+}
+
+/**
+ * Transcribe audio using Sarvam AI via Supabase Edge Function.
+ * API key is stored server-side — no key needed on the client.
  *
  * @param {Blob} audioBlob - The audio blob to transcribe
- * @param {string} apiKey - Sarvam AI API key
  * @param {object} options - Additional options
- * @param {string} options.languageCode - BCP-47 language code (default: 'unknown' for auto-detect)
- * @param {string} options.mode - Mode: 'transcribe' | 'translate' | 'verbatim' | 'translit' | 'codemix'
+ * @param {string} options.languageCode - BCP-47 language code (default: 'unknown')
+ * @param {string} options.mode - Mode: 'transcribe' | 'translate' | 'codemix'
  * @returns {Promise<{transcript: string, languageDetected: string|null, confidence: number}>}
  */
-export async function transcribeWithSarvam(audioBlob, apiKey, options = {}) {
+export async function transcribeWithSarvam(audioBlob, options = {}) {
     const { languageCode = 'unknown', mode = 'translate' } = options;
-
-    if (!apiKey) {
-        throw new Error('Sarvam AI API key is required. Add it in Settings.');
-    }
 
     // Build multipart form data
     const formData = new FormData();
 
-    // Determine clean MIME type and extension (strip codec params like ";codecs=opus")
+    // Determine clean MIME type and extension
     let cleanMime = 'audio/webm';
     let ext = 'webm';
     if (audioBlob.type.includes('wav')) { cleanMime = 'audio/wav'; ext = 'wav'; }
     else if (audioBlob.type.includes('mp3') || audioBlob.type.includes('mpeg')) { cleanMime = 'audio/mpeg'; ext = 'mp3'; }
     else if (audioBlob.type.includes('webm')) { cleanMime = 'audio/webm'; ext = 'webm'; }
 
-    // Re-wrap blob with clean MIME type (Sarvam rejects "audio/webm;codecs=opus")
     const cleanBlob = new Blob([audioBlob], { type: cleanMime });
 
     formData.append('file', cleanBlob, `recording.${ext}`);
-    formData.append('model', 'saaras:v3');
-    // Only send language_code if a specific language is selected (not 'unknown')
     if (languageCode && languageCode !== 'unknown') {
         formData.append('language_code', languageCode);
     }
     formData.append('mode', mode);
 
-    console.log('[STT Debug] Sending to Sarvam:', {
+    console.log('[STT] Sending to Edge Function:', {
         fileSize: cleanBlob.size,
         fileType: cleanBlob.type,
-        ext,
         languageCode,
         mode,
     });
 
     try {
-        const response = await fetch(SARVAM_API_URL, {
-            method: 'POST',
-            headers: {
-                'api-subscription-key': apiKey,
-            },
-            body: formData,
-        });
+        let token = await getAccessToken();
+        if (!token) {
+            throw new Error('Not authenticated. Please sign in.');
+        }
+
+        let response = await callTranscribeFunction(token, formData);
+
+        // If 401, try refreshing the session and retry once
+        if (response.status === 401) {
+            console.warn('[STT] Got 401 — refreshing session and retrying…');
+            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+            if (refreshError || !refreshData.session) {
+                throw new Error('Session expired. Please sign in again.');
+            }
+            token = refreshData.session.access_token;
+            response = await callTranscribeFunction(token, formData);
+        }
 
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('[STT Debug] Sarvam API error response:', response.status, errorText);
-            let errorMessage;
-            try {
-                const errorData = JSON.parse(errorText);
-                errorMessage = errorData.error?.message || errorData.message || errorData.detail || JSON.stringify(errorData);
-            } catch {
-                errorMessage = errorText;
+            const errorData = await response.json().catch(() => ({}));
+            const errorMsg = errorData.error || `${response.status} ${response.statusText}`;
+            if (response.status === 401) {
+                throw new Error('Session expired. Please sign in again.');
             }
-            throw new Error(
-                `Sarvam AI API error: ${response.status} — ${errorMessage}`
-            );
+            if (response.status === 402) {
+                throw new Error('No credits remaining. Please upgrade your plan.');
+            }
+            throw new Error(`Transcription failed: ${errorMsg}`);
         }
 
         const data = await response.json();
@@ -83,8 +94,7 @@ export async function transcribeWithSarvam(audioBlob, apiKey, options = {}) {
             confidence: estimateConfidence(data.transcript),
         };
     } catch (err) {
-        if (err.message.includes('API key')) throw err;
-        console.error('Sarvam AI STT error:', err);
+        console.error('STT error:', err);
         throw new Error(`Speech-to-text failed: ${err.message}`);
     }
 }
@@ -135,14 +145,12 @@ function estimateConfidence(transcript) {
     if (!transcript) return 0;
 
     const length = transcript.length;
-    let score = 0.7; // base score
+    let score = 0.7;
 
-    // Longer transcripts generally more reliable
     if (length > 20) score += 0.05;
     if (length > 50) score += 0.05;
     if (length > 100) score += 0.05;
 
-    // Contains technical terms
     const techTerms = /\b(api|function|component|database|server|client|react|node|express|python|class|method|variable|array|object|string|integer|boolean|import|export|return|async|await)\b/gi;
     const matches = transcript.match(techTerms);
     if (matches && matches.length > 0) score += 0.05;

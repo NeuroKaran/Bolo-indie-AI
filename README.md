@@ -31,10 +31,13 @@
 |---------|-------------|
 | 🎙️ **Voice Recording** | One-click or `Ctrl + Space` hotkey to start dictating |
 | 🗣️ **Indic STT** | Powered by Sarvam AI — supports Hinglish and 10+ Indian languages |
-| 🧠 **AI Prompt Structuring** | Gemini 2.5 Flash transforms transcripts into structured prompts |
+| 🧠 **Multiple LLMs** | Choose between Gemini 2.5 Flash & Sarvam INDUS for prompt structuring |
 | 📋 **Auto-Copy** | Prompts automatically copied to clipboard, ready to paste |
 | 📜 **Prompt History** | Last 50 prompts stored locally with search & favorites |
+| 🔐 **Authentication** | User accounts & Admin Dashboard powered by Supabase Auth |
+| 💳 **Credits & Payments**| Razorpay integration for daily quotas and top-ups |
 | ⚙️ **Settings** | Configure STT provider, language, API keys, and preferences |
+| 🖥️ **Desktop App** | Native Windows desktop experience built with Tauri v2 |
 
 ---
 
@@ -43,8 +46,10 @@
 ### Prerequisites
 
 - **Node.js** 18+
-- **Sarvam AI API Key** — for Indian language speech-to-text
+- **Sarvam AI API Key** — for Indian language speech-to-text / LLM
 - **Google Gemini API Key** — for prompt structuring
+- **Supabase Project** — for database, authentication, and edge functions
+- **Razorpay Keys** — for payment processing
 
 ### Installation
 
@@ -58,13 +63,17 @@ npm install
 
 # Create environment file
 cp .env.example .env
-# Add your API keys to .env
+# Add your API keys and Supabase URL/Anon Key to .env
 ```
 
 ### Running Locally
 
 ```bash
+# Start frontend
 npm run dev
+
+# Start desktop app (Tauri)
+npm run desktop
 ```
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
@@ -72,8 +81,12 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 ### Building for Production
 
 ```bash
+# Build web app
 npm run build
 npm run preview
+
+# Build Windows desktop executable (.exe)
+npm run build:desktop
 ```
 
 ---
@@ -96,8 +109,12 @@ Bolo/
 │   ├── services/
 │   │   ├── sttService.js      # Sarvam AI STT integration
 │   │   ├── promptService.js   # Gemini prompt structuring
+│   │   ├── indusService.js    # Sarvam INDUS LLM integration
 │   │   ├── clipboardService.js # Clipboard operations
-│   │   └── storageService.js  # LocalStorage persistence
+│   │   ├── storageService.js  # LocalStorage persistence
+│   │   ├── authService.js     # Supabase Auth logic
+│   │   ├── paymentService.js  # Razorpay integration
+│   │   └── supabaseClient.js  # Supabase client setup
 │   ├── App.jsx                # Main application
 │   ├── main.jsx               # Entry point
 │   └── index.css              # Design system
@@ -139,9 +156,12 @@ Bolo follows an **Indian-first aesthetic** with a design system rooted in Indian
 | **Frontend** | React 19, Vite 7 |
 | **Styling** | Vanilla CSS (custom design system) |
 | **Icons** | Lucide React |
+| **Database / Auth** | Supabase |
+| **Edge Functions** | Deno (Supabase) |
+| **Payments** | Razorpay |
+| **Desktop App** | Tauri v2 (Rust) |
 | **STT** | Sarvam AI |
-| **LLM** | Google Gemini 2.5 Flash |
-| **Storage** | Browser LocalStorage |
+| **LLM** | Google Gemini 2.5 Flash, Sarvam INDUS |
 
 ---
 

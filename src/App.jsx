@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Mic, Clock, Settings, Zap } from 'lucide-react';
 import FloatingBar from './components/FloatingBar';
 import HistoryPanel from './components/HistoryPanel';
 import SettingsPanel from './components/SettingsPanel';
 import PromptCard from './components/PromptCard';
 import Onboarding from './components/Onboarding';
+import AuthPage from './components/AuthPage';
+import AdminDashboard from './components/AdminDashboard';
 import Toast, { createToast } from './components/Toast';
 import { copyPromptToClipboard } from './services/clipboardService';
 import {
@@ -18,51 +19,82 @@ import {
   getSettings,
   isOnboardingComplete,
 } from './services/storageService';
+import { onAuthStateChange, signOut, getCurrentUser, getUserProfile, ensureProfile } from './services/authService';
 
 export default function App() {
-  const [view, setView] = useState('home'); // home | history | settings
+  const [view, setView] = useState('home'); // home | history | settings | admin
   const [isBarOpen, setIsBarOpen] = useState(false);
   const [prompts, setPrompts] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const [toasts, setToasts] = useState([]);
   const [latestPrompt, setLatestPrompt] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const floatingBarRef = useRef(null);
 
-  // Load data on mount
+  // Auth state listener
   useEffect(() => {
-    setPrompts(getPromptHistory());
-    setFavorites(getFavorites());
+    const subscription = onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        // Ensure profile exists (creates on first login/signup)
+        await ensureProfile(session.user);
+        // Load data
+        const history = await getPromptHistory(session.user.id);
+        setPrompts(history);
+        const favs = await getFavorites(session.user.id);
+        setFavorites(favs);
 
-    // Check if onboarding needed
-    if (!isOnboardingComplete()) {
-      setShowOnboarding(true);
-    }
+        if (!isOnboardingComplete()) {
+          setShowOnboarding(true);
+        }
+      } else {
+        setUser(null);
+        setPrompts([]);
+        setFavorites([]);
+      }
+      setAuthLoading(false);
+    });
+
+    // Also check current session on mount
+    getCurrentUser().then(u => {
+      if (u) setUser(u);
+      setAuthLoading(false);
+    });
+
+    return () => subscription?.unsubscribe();
   }, []);
 
-  // Listen for Tauri global hotkey event (system-wide Ctrl+Space)
+  // Secret admin dashboard: Ctrl+Shift+A
   useEffect(() => {
-    let unlisten;
-    const isTauri = !!window.__TAURI__;
-
-    if (isTauri) {
-      import('@tauri-apps/api/event').then(({ listen }) => {
-        listen('toggle-recording', () => {
-          if (!showOnboarding) setIsBarOpen(true);
-        }).then(fn => { unlisten = fn; });
-      });
-    }
-
-    return () => {
-      if (unlisten) unlisten();
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyA') {
+        e.preventDefault();
+        setShowAdmin(prev => !prev);
+        if (!showAdmin) setView('admin');
+        else setView('home');
+      }
     };
-  }, [showOnboarding]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showAdmin]);
 
-  // Browser fallback hotkey: Ctrl+Space (only when not in Tauri)
+  // Hotkey: Ctrl+Space to record / Escape to close
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.ctrlKey && e.code === 'Space') {
         e.preventDefault();
-        if (!showOnboarding) setIsBarOpen(true);
+        if (!showOnboarding && user) {
+          if (isBarOpen) {
+            if (floatingBarRef.current) {
+              floatingBarRef.current.stopRecording();
+            }
+          } else {
+            setIsBarOpen(true);
+          }
+        }
       }
       if (e.key === 'Escape' && isBarOpen) {
         setIsBarOpen(false);
@@ -71,7 +103,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isBarOpen, showOnboarding]);
+  }, [isBarOpen, showOnboarding, user]);
 
   // Toast helper
   const showToast = useCallback((message, type = 'success') => {
@@ -83,64 +115,70 @@ export default function App() {
   }, []);
 
   // Handle new prompt from FloatingBar
-  const handlePromptReady = useCallback((promptData) => {
-    const prompt = {
-      ...promptData,
-      promptId: uuidv4(),
-      createdAt: new Date().toISOString(),
-    };
+  const handlePromptReady = useCallback(async (promptData) => {
+    if (!user) return;
 
-    const history = savePrompt(prompt);
+    const history = await savePrompt(user.id, promptData);
     setPrompts(history);
-    setLatestPrompt(prompt);
+    // Set latest to the first item (newest)
+    if (history.length > 0) {
+      setLatestPrompt(history[0]);
+    }
     setView('home');
 
     // Auto-copy if enabled
     const settings = getSettings();
     if (settings.autoCopy) {
-      copyPromptToClipboard(prompt).then(success => {
-        if (success) showToast('Prompt copied to clipboard! 📋');
-      });
+      const promptToCopy = history[0] || promptData;
+      const success = await copyPromptToClipboard(promptToCopy);
+      if (success) showToast('Prompt copied to clipboard! 📋');
     }
-  }, [showToast]);
+  }, [user, showToast]);
 
   // Handle favorite toggle
-  const handleFavorite = useCallback((promptId) => {
-    const updated = toggleFavorite(promptId);
-    setFavorites(updated);
-  }, []);
+  const handleFavorite = useCallback(async (promptId) => {
+    if (!user) return;
+    const history = await toggleFavorite(user.id, promptId);
+    setPrompts(history);
+    const favs = await getFavorites(user.id);
+    setFavorites(favs);
+  }, [user]);
 
   // Handle delete
-  const handleDelete = useCallback((promptId) => {
-    const updated = deletePrompt(promptId);
-    setPrompts(updated);
+  const handleDelete = useCallback(async (promptId) => {
+    if (!user) return;
+    const history = await deletePrompt(user.id, promptId);
+    setPrompts(history);
     if (latestPrompt?.promptId === promptId) {
       setLatestPrompt(null);
     }
     showToast('Prompt deleted');
-  }, [latestPrompt, showToast]);
+  }, [user, latestPrompt, showToast]);
 
   // Handle prompt update (editing)
-  const handleUpdate = useCallback((promptId, updates) => {
-    const updated = updatePrompt(promptId, updates);
-    setPrompts(updated);
-    // Also update latestPrompt if it's the one being edited
+  const handleUpdate = useCallback(async (promptId, updates) => {
+    if (!user) return;
+    const history = await updatePrompt(user.id, promptId, updates);
+    setPrompts(history);
     if (latestPrompt?.promptId === promptId) {
       setLatestPrompt(prev => ({ ...prev, ...updates }));
     }
     showToast('Prompt updated ✓');
-  }, [latestPrompt, showToast]);
+  }, [user, latestPrompt, showToast]);
 
   // Handle copy
   const handleCopy = useCallback(() => {
     showToast('Copied to clipboard! 📋');
   }, [showToast]);
 
-  // Refresh data (used by import/clear)
-  const handleRefresh = useCallback(() => {
-    setPrompts(getPromptHistory());
-    setFavorites(getFavorites());
-  }, []);
+  // Refresh data
+  const handleRefresh = useCallback(async () => {
+    if (!user) return;
+    const history = await getPromptHistory(user.id);
+    setPrompts(history);
+    const favs = await getFavorites(user.id);
+    setFavorites(favs);
+  }, [user]);
 
   // Onboarding complete
   const handleOnboardingComplete = useCallback(() => {
@@ -148,11 +186,60 @@ export default function App() {
     showToast('Welcome to Bolo! 🎉 Press Ctrl+Space to start.', 'success');
   }, [showToast]);
 
+  // Sign out
+  const handleSignOut = useCallback(async () => {
+    await signOut();
+    setUser(null);
+    setPrompts([]);
+    setFavorites([]);
+    setLatestPrompt(null);
+    setView('home');
+    showToast('Signed out successfully');
+  }, [showToast]);
+
+  // Auth success callback
+  const handleAuthSuccess = useCallback(() => {
+    // Auth state change listener will handle the rest
+  }, []);
+
+  // Loading state
+  if (authLoading) {
+    return (
+      <div className="app-loading">
+        <img src="/Bolo-logo.png" alt="Bolo" style={{ height: 60 }} />
+        <div className="spinner" />
+      </div>
+    );
+  }
+
+  // Not authenticated — show auth page
+  if (!user) {
+    return (
+      <>
+        <AuthPage onAuthSuccess={handleAuthSuccess} />
+        <Toast toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
+  }
+
   // Show onboarding if needed
   if (showOnboarding) {
     return (
       <>
-        <Onboarding onComplete={handleOnboardingComplete} />
+        <Onboarding
+          onComplete={handleOnboardingComplete}
+          userName={user.user_metadata?.display_name || user.email?.split('@')[0]}
+        />
+        <Toast toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
+  }
+
+  // Admin dashboard (hidden)
+  if (view === 'admin' && showAdmin) {
+    return (
+      <>
+        <AdminDashboard onBack={() => { setView('home'); setShowAdmin(false); }} />
         <Toast toasts={toasts} onDismiss={dismissToast} />
       </>
     );
@@ -245,12 +332,12 @@ export default function App() {
               </div>
             )}
 
-            {/* Danda Divider — Devanagari-inspired */}
+            {/* Danda Divider */}
             {(latestPrompt || prompts.length > 0) && (
               <div className="danda-divider" aria-hidden="true">॥</div>
             )}
 
-            {/* Recent History (compact) */}
+            {/* Recent History */}
             {prompts.length > 0 && (
               <HistoryPanel
                 prompts={prompts}
@@ -261,6 +348,7 @@ export default function App() {
                 onUpdate={handleUpdate}
                 onRefresh={handleRefresh}
                 onToast={showToast}
+                userId={user?.id}
               />
             )}
           </>
@@ -276,6 +364,7 @@ export default function App() {
             onUpdate={handleUpdate}
             onRefresh={handleRefresh}
             onToast={showToast}
+            userId={user?.id}
           />
         )}
 
@@ -283,12 +372,15 @@ export default function App() {
           <SettingsPanel
             onToast={showToast}
             onSettingsChange={() => { }}
+            user={user}
+            onSignOut={handleSignOut}
           />
         )}
       </main>
 
       {/* Floating Record Bar */}
       <FloatingBar
+        ref={floatingBarRef}
         isOpen={isBarOpen}
         onClose={() => setIsBarOpen(false)}
         onPromptReady={handlePromptReady}
