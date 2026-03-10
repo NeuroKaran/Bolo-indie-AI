@@ -28,7 +28,7 @@ export default function App() {
   const [favorites, setFavorites] = useState([]);
   const [toasts, setToasts] = useState([]);
   const [latestPrompt, setLatestPrompt] = useState(null);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(!isOnboardingComplete());
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showAdmin, setShowAdmin] = useState(false);
@@ -212,24 +212,24 @@ export default function App() {
     );
   }
 
-  // Not authenticated — show auth page
-  if (!user) {
-    return (
-      <>
-        <AuthPage onAuthSuccess={handleAuthSuccess} />
-        <Toast toasts={toasts} onDismiss={dismissToast} />
-      </>
-    );
-  }
-
-  // Show onboarding if needed
+  // Show onboarding if needed (before login)
   if (showOnboarding) {
     return (
       <>
         <Onboarding
           onComplete={handleOnboardingComplete}
-          userName={user.user_metadata?.display_name || user.email?.split('@')[0]}
+          userName={user?.user_metadata?.display_name || user?.email?.split('@')[0]}
         />
+        <Toast toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
+  }
+
+  // Not authenticated — show auth page
+  if (!user) {
+    return (
+      <>
+        <AuthPage onAuthSuccess={handleAuthSuccess} />
         <Toast toasts={toasts} onDismiss={dismissToast} />
       </>
     );
