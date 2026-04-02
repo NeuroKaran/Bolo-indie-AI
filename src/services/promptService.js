@@ -4,7 +4,9 @@
 
 import { supabase, getAccessToken } from './supabaseClient';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_URL = (typeof import.meta !== 'undefined' && import.meta.env)
+    ? import.meta.env.VITE_SUPABASE_URL
+    : 'https://placeholder.supabase.co';
 
 export const SYSTEM_PROMPT = `You are Bolo, a prompt structuring assistant for Indian developers. 
 Your job is to take a raw speech transcript (often from Hinglish or Indian language speech converted to English) and transform it into a clean, structured developer prompt that can be directly pasted into AI coding assistants like Cursor, GitHub Copilot, or ChatGPT.
