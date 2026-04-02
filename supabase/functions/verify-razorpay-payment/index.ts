@@ -49,14 +49,39 @@ Deno.serve(async (req) => {
         }
 
         const body = await req.json();
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, packageId } = body;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
 
+        const keyId = Deno.env.get('VITE_RAZORPAY_KEY_ID');
         const keySecret = Deno.env.get('VITE_RAZORPAY_KEY_SECRET');
-        if (!keySecret) throw new Error('Razorpay secret not configured');
+        if (!keyId || !keySecret) throw new Error('Razorpay credentials not configured');
 
         const isValid = await verifySignature(razorpay_order_id, razorpay_payment_id, razorpay_signature, keySecret);
         if (!isValid) {
             return new Response(JSON.stringify({ error: 'Invalid payment signature' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        // Fetch order details from Razorpay to verify package and user
+        const authString = btoa(`${keyId}:${keySecret}`);
+        const orderRes = await fetch(`https://api.razorpay.com/v1/orders/${razorpay_order_id}`, {
+            headers: {
+                'Authorization': `Basic ${authString}`
+            }
+        });
+
+        if (!orderRes.ok) {
+            throw new Error('Failed to fetch order details from Razorpay');
+        }
+
+        const orderData = await orderRes.json();
+        const verifiedPackageId = orderData.notes?.package_id;
+        const verifiedUserId = orderData.notes?.user_id;
+
+        if (verifiedUserId !== user.id) {
+            throw new Error('Payment user mismatch');
+        }
+
+        if (!verifiedPackageId) {
+            throw new Error('Package ID missing from order notes');
         }
 
         // Apply package benefits
@@ -66,17 +91,17 @@ Deno.serve(async (req) => {
         let updateData: any = {};
 
         // Define our packages based on the pricing strategy
-        if (packageId === 'pro_monthly') {
+        if (verifiedPackageId === 'pro_monthly') {
             updateData.plan = 'pro';
             updateData.daily_credits = 10;
-        } else if (packageId === 'power_monthly') {
+        } else if (verifiedPackageId === 'power_monthly') {
             updateData.plan = 'power';
             updateData.daily_credits = 30;
-        } else if (packageId === 'topup_mini') {
+        } else if (verifiedPackageId === 'topup_mini') {
             updateData.topup_credits = profile.topup_credits + 50;
-        } else if (packageId === 'topup_value') {
+        } else if (verifiedPackageId === 'topup_value') {
             updateData.topup_credits = profile.topup_credits + 200;
-        } else if (packageId === 'topup_mega') {
+        } else if (verifiedPackageId === 'topup_mega') {
             updateData.topup_credits = profile.topup_credits + 500;
         } else {
             throw new Error('Unknown package ID');
