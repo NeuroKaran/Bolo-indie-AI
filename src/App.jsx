@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Mic, Clock, Settings, Zap } from 'lucide-react';
 import FloatingBar from './components/FloatingBar';
 import HistoryPanel from './components/HistoryPanel';
@@ -14,7 +14,6 @@ import {
   savePrompt,
   deletePrompt,
   updatePrompt,
-  getFavorites,
   toggleFavorite,
   getSettings,
   isOnboardingComplete,
@@ -25,7 +24,7 @@ export default function App() {
   const [view, setView] = useState('home'); // home | history | settings | admin
   const [isBarOpen, setIsBarOpen] = useState(false);
   const [prompts, setPrompts] = useState([]);
-  const [favorites, setFavorites] = useState([]);
+  const favorites = useMemo(() => prompts.filter(p => p.isFavorite).map(p => p.promptId), [prompts]);
   const [toasts, setToasts] = useState([]);
   const [latestPrompt, setLatestPrompt] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(!isOnboardingComplete());
@@ -44,8 +43,6 @@ export default function App() {
         // Load data
         const history = await getPromptHistory(session.user.id);
         setPrompts(history);
-        const favs = await getFavorites(session.user.id);
-        setFavorites(favs);
 
         if (!isOnboardingComplete()) {
           setShowOnboarding(true);
@@ -53,7 +50,6 @@ export default function App() {
       } else {
         setUser(null);
         setPrompts([]);
-        setFavorites([]);
       }
       setAuthLoading(false);
     });
@@ -140,8 +136,6 @@ export default function App() {
     if (!user) return;
     const history = await toggleFavorite(user.id, promptId);
     setPrompts(history);
-    const favs = await getFavorites(user.id);
-    setFavorites(favs);
   }, [user]);
 
   // Handle delete
@@ -176,8 +170,6 @@ export default function App() {
     if (!user) return;
     const history = await getPromptHistory(user.id);
     setPrompts(history);
-    const favs = await getFavorites(user.id);
-    setFavorites(favs);
   }, [user]);
 
   // Onboarding complete
@@ -191,7 +183,6 @@ export default function App() {
     await signOut();
     setUser(null);
     setPrompts([]);
-    setFavorites([]);
     setLatestPrompt(null);
     setView('home');
     showToast('Signed out successfully');
