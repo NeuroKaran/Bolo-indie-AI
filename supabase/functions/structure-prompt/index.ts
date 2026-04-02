@@ -3,12 +3,7 @@
 // Proxies transcript to Gemini LLM with server-side API key
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 const SYSTEM_PROMPT = `You are Bolo, a prompt structuring assistant for Indian developers. 
 Your job is to take a raw speech transcript (often from Hinglish or Indian language speech converted to English) and transform it into a clean, structured developer prompt that can be directly pasted into AI coding assistants like Cursor, GitHub Copilot, or ChatGPT.
@@ -34,6 +29,8 @@ You MUST respond in valid JSON format with this exact structure:
 ONLY return the JSON object, no other text.`;
 
 Deno.serve(async (req) => {
+    const corsHeaders = getCorsHeaders(req);
+
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
