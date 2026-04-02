@@ -127,34 +127,33 @@ export function fallbackStructure(transcript) {
  * Format a structured prompt as markdown for clipboard
  */
 export function formatPromptAsMarkdown(prompt) {
-    let md = `## ${prompt.title}\n\n`;
-    md += `${prompt.summary}\n\n`;
+    const parts = [`## ${prompt.title}\n\n${prompt.summary}\n\n`];
 
     if (prompt.requirements.length > 0) {
-        md += `### Requirements\n`;
-        prompt.requirements.forEach(r => { md += `- ${r}\n`; });
-        md += '\n';
+        parts.push(`### Requirements\n`);
+        parts.push(prompt.requirements.map(r => `- ${r}`).join('\n'));
+        parts.push('\n\n');
     }
 
     if (prompt.acceptance_criteria.length > 0) {
-        md += `### Acceptance Criteria\n`;
-        prompt.acceptance_criteria.forEach(c => { md += `- ${c}\n`; });
-        md += '\n';
+        parts.push(`### Acceptance Criteria\n`);
+        parts.push(prompt.acceptance_criteria.map(c => `- ${c}`).join('\n'));
+        parts.push('\n\n');
     }
 
     if (prompt.constraints.length > 0) {
-        md += `### Constraints\n`;
-        prompt.constraints.forEach(c => { md += `- ${c}\n`; });
-        md += '\n';
+        parts.push(`### Constraints\n`);
+        parts.push(prompt.constraints.map(c => `- ${c}`).join('\n'));
+        parts.push('\n\n');
     }
 
     if (prompt.examples.length > 0) {
-        md += `### Examples\n`;
-        prompt.examples.forEach(e => { md += `- ${e}\n`; });
-        md += '\n';
+        parts.push(`### Examples\n`);
+        parts.push(prompt.examples.map(e => `- ${e}`).join('\n'));
+        parts.push('\n\n');
     }
 
-    return md.trim();
+    return parts.join('').trim();
 }
 
 /**
