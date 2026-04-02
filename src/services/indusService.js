@@ -87,8 +87,6 @@ export async function structurePromptWithIndus(transcript, apiKey) {
     } catch (err) {
         if (err.message.includes('API key')) throw err;
 
-        console.error('INDUS Prompt structuring error:', err);
-
         // Fallback: basic local structuring
         return fallbackStructure(transcript);
     }
