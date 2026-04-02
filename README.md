@@ -109,7 +109,6 @@ Bolo/
 │   ├── services/
 │   │   ├── sttService.js      # Sarvam AI STT integration
 │   │   ├── promptService.js   # Gemini prompt structuring
-│   │   ├── indusService.js    # Sarvam INDUS LLM integration
 │   │   ├── clipboardService.js # Clipboard operations
 │   │   ├── storageService.js  # LocalStorage persistence
 │   │   ├── authService.js     # Supabase Auth logic

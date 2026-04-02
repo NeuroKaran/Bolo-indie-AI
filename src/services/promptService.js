@@ -157,11 +157,3 @@ export function formatPromptAsMarkdown(prompt) {
     return md.trim();
 }
 
-/**
- * Route request to the configured LLM provider
- * (Simplified — both providers go through the same Edge Function)
- */
-export async function structurePromptWithProvider(transcript, settings) {
-    const provider = settings.llmProvider || 'gemini';
-    return structurePrompt(transcript, provider);
-}
