@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Mic, Square, X, Loader } from 'lucide-react';
+import { Mic, Square, X } from 'lucide-react';
 import Waveform from './Waveform';
 import audioService from '../services/audioService';
 import { transcribeWithSarvam } from '../services/sttService';
