@@ -129,6 +129,7 @@ export default function AdminDashboard({ onBack }) {
     }, []);
 
     const maxDailyCount = Math.max(...dailyUsage.map(d => d.count), 1);
+    const totalLanguageCount = languageStats.reduce((a, b) => a + b.count, 0);
 
     const LANG_LABELS = {
         'unknown': 'Auto-detect',
@@ -232,8 +233,9 @@ export default function AdminDashboard({ onBack }) {
                             </h3>
                             <div className="admin-lang-list">
                                 {languageStats.length > 0 ? languageStats.map((lang, i) => {
-                                    const total = languageStats.reduce((a, b) => a + b.count, 0);
-                                    const pct = Math.round((lang.count / total) * 100);
+                                    const pct = totalLanguageCount > 0
+                                        ? Math.round((lang.count / totalLanguageCount) * 100)
+                                        : 0;
                                     return (
                                         <div key={lang.code} className="admin-lang-item">
                                             <span className="admin-lang-name">
