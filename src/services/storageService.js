@@ -5,7 +5,7 @@
 import { supabase } from './supabaseClient';
 
 // LocalStorage keys (used as offline cache)
-const STORAGE_KEYS = {
+export const STORAGE_KEYS = {
     SETTINGS: 'bolo_settings',
     ONBOARDING: 'bolo_onboarding_complete',
     PROMPTS_CACHE: 'bolo_prompts_cache',
