@@ -190,7 +190,6 @@ export class SarvamStreamingSTT {
         try {
             if (typeof event.data === 'string') {
                 const data = JSON.parse(event.data);
-                console.log('[Streaming STT] Received:', data);
 
                 // Sarvam sends objects with "transcript" for final segments
                 // and potentially "partial_transcript" for interim results
@@ -219,7 +218,7 @@ export class SarvamStreamingSTT {
                 }
             }
         } catch (err) {
-            console.warn('[Streaming STT] Failed to parse message:', err, event.data);
+            console.warn('[Streaming STT] Failed to parse message:', err);
         }
     }
 }
